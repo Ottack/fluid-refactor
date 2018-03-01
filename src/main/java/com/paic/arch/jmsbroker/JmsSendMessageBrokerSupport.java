@@ -1,0 +1,89 @@
+package com.paic.arch.jmsbroker;
+
+import org.apache.activemq.ActiveMQConnectionFactory;
+import org.slf4j.Logger;
+
+import javax.jms.*;
+import java.lang.IllegalStateException;
+
+import static org.slf4j.LoggerFactory.getLogger;
+
+/**
+ * Created by Ottack on 2018/3/1.
+ * Send
+ */
+public class JmsSendMessageBrokerSupport {
+
+    private static final Logger LOG = getLogger(JmsSendMessageBrokerSupport.class);
+    private static final int ONE_SECOND = 1000;
+    private static final int DEFAULT_RECEIVE_TIMEOUT = 10 * ONE_SECOND;
+
+    private String executeCallbackAgainstRemoteBroker(String aBrokerUrl, String aDestinationName, JmsSendMessageBrokerSupport.JmsCallback aCallback) {
+        Connection connection = null;
+        String returnValue = "";
+        try {
+            //创建一个链接工厂
+            ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(aBrokerUrl);
+            //从工厂中创建一个链接
+            connection = connectionFactory.createConnection();
+            //开启链接
+            connection.start();
+            //创建一个事务（这里通过参数可以设置事务的级别）
+            returnValue = executeCallbackAgainstConnection(connection, aDestinationName, aCallback);
+        } catch (JMSException jmse) {
+            LOG.error("failed to create connection to {}", aBrokerUrl);
+            throw new IllegalStateException(jmse);
+        } finally {
+            if (connection != null) {
+                try {
+                    connection.close();
+                } catch (JMSException jmse) {
+                    LOG.warn("Failed to close connection to broker at []", aBrokerUrl);
+                    throw new IllegalStateException(jmse);
+                }
+            }
+        }
+        return returnValue;
+    }
+
+    interface JmsCallback {
+        String performJmsFunction(Session aSession, Destination aDestination) throws JMSException;
+    }
+
+    //创建事务
+    private String executeCallbackAgainstConnection(Connection aConnection, String aDestinationName, JmsSendMessageBrokerSupport.JmsCallback aCallback) {
+        Session session = null;
+        try {
+            session = aConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Queue queue = session.createQueue(aDestinationName);
+            return aCallback.performJmsFunction(session, queue);
+        } catch (JMSException jmse) {
+            LOG.error("Failed to create session on connection {}", aConnection);
+            throw new IllegalStateException(jmse);
+        } finally {
+            if (session != null) {
+                try {
+                    session.close();
+                } catch (JMSException jmse) {
+                    LOG.warn("Failed to close session {}", session);
+                    throw new IllegalStateException(jmse);
+                }
+            }
+        }
+    }
+
+    //发送消息
+    public JmsSendMessageBrokerSupport sendATextMessageToDestinationAt(String aDestinationName, final String aMessageToSend,String brokerUrl) {
+        executeCallbackAgainstRemoteBroker(brokerUrl, aDestinationName, (aSession, aDestination) -> {
+            //消息生产者
+            MessageProducer producer = aSession.createProducer(aDestination);
+            //发送消息
+            producer.send(aSession.createTextMessage(aMessageToSend));
+            producer.close();
+            return "";
+        });
+        return this;
+    }
+
+
+}

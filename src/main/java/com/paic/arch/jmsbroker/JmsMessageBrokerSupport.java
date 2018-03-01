@@ -68,9 +68,12 @@ public class JmsMessageBrokerSupport {
         return brokerUrl;
     }
 
+    //发送消息
     public JmsMessageBrokerSupport sendATextMessageToDestinationAt(String aDestinationName, final String aMessageToSend) {
         executeCallbackAgainstRemoteBroker(brokerUrl, aDestinationName, (aSession, aDestination) -> {
+            //消息生产者
             MessageProducer producer = aSession.createProducer(aDestination);
+            //发送消息
             producer.send(aSession.createTextMessage(aMessageToSend));
             producer.close();
             return "";
@@ -78,13 +81,17 @@ public class JmsMessageBrokerSupport {
         return this;
     }
 
+    //取回消息
     public String retrieveASingleMessageFromTheDestination(String aDestinationName) {
         return retrieveASingleMessageFromTheDestination(aDestinationName, DEFAULT_RECEIVE_TIMEOUT);
     }
 
+    //取回消息
     public String retrieveASingleMessageFromTheDestination(String aDestinationName, final int aTimeout) {
         return executeCallbackAgainstRemoteBroker(brokerUrl, aDestinationName, (aSession, aDestination) -> {
+            //创建消费者
             MessageConsumer consumer = aSession.createConsumer(aDestination);
+            //接收消息
             Message message = consumer.receive(aTimeout);
             if (message == null) {
                 throw new NoMessageReceivedException(String.format("No messages received from the broker within the %d timeout", aTimeout));
@@ -94,13 +101,18 @@ public class JmsMessageBrokerSupport {
         });
     }
 
+    //
     private String executeCallbackAgainstRemoteBroker(String aBrokerUrl, String aDestinationName, JmsCallback aCallback) {
         Connection connection = null;
         String returnValue = "";
         try {
+            //创建一个链接工厂
             ActiveMQConnectionFactory connectionFactory = new ActiveMQConnectionFactory(aBrokerUrl);
+            //从工厂中创建一个链接
             connection = connectionFactory.createConnection();
+            //开启链接
             connection.start();
+            //创建一个事务（这里通过参数可以设置事务的级别）
             returnValue = executeCallbackAgainstConnection(connection, aDestinationName, aCallback);
         } catch (JMSException jmse) {
             LOG.error("failed to create connection to {}", aBrokerUrl);
@@ -122,6 +134,7 @@ public class JmsMessageBrokerSupport {
         String performJmsFunction(Session aSession, Destination aDestination) throws JMSException;
     }
 
+    //创建事务
     private String executeCallbackAgainstConnection(Connection aConnection, String aDestinationName, JmsCallback aCallback) {
         Session session = null;
         try {
@@ -143,14 +156,17 @@ public class JmsMessageBrokerSupport {
         }
     }
 
+    //获取目标消息长度
     public long getEnqueuedMessageCountAt(String aDestinationName) throws Exception {
         return getDestinationStatisticsFor(aDestinationName).getMessages().getCount();
     }
 
+    //判断目标消息长度是否为空
     public boolean isEmptyQueueAt(String aDestinationName) throws Exception {
         return getEnqueuedMessageCountAt(aDestinationName) == 0;
     }
 
+    //获取Broker的Destination
     private DestinationStatistics getDestinationStatisticsFor(String aDestinationName) throws Exception {
         Broker regionBroker = brokerService.getRegionBroker();
         for (org.apache.activemq.broker.region.Destination destination : regionBroker.getDestinationMap().values()) {
@@ -161,6 +177,7 @@ public class JmsMessageBrokerSupport {
         throw new IllegalStateException(String.format("Destination %s does not exist on broker at %s", aDestinationName, brokerUrl));
     }
 
+    //无消息抛出异常
     public class NoMessageReceivedException extends RuntimeException {
         public NoMessageReceivedException(String reason) {
             super(reason);
